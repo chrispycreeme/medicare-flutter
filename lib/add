@@ -1,0 +1,78 @@
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
+class DataPage extends StatefulWidget {
+  final String dataKey;
+
+  const DataPage({super.key, required this.dataKey});
+
+  @override
+  _DataPageState createState() => _DataPageState();
+}
+
+class _DataPageState extends State<DataPage> {
+  late Stream<List<dynamic>> _dataStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _dataStream = _fetchDataPeriodically();
+  }
+
+  Stream<List<dynamic>> _fetchDataPeriodically() async* {
+    while (true) {
+      final response = await http.get(
+        Uri.parse('https://composed-apparent-arachnid.ngrok-free.app/health_monitoring.php?key=${widget.dataKey}'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as List<dynamic>;
+        data.sort((a, b) => b['timestamp'].compareTo(a['timestamp']));
+        yield data;
+      } else {
+        yield [];
+      }
+
+      await Future.delayed(Duration(seconds: 10));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Health Monitoring Data'),
+      ),
+      body: StreamBuilder<List<dynamic>>(
+        stream: _dataStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text('Error fetching data'));
+          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return Center(child: Text('No data available'));
+          } else {
+            final latestData = snapshot.data!.first;
+            return ListView(
+              children: [
+                ListTile(
+                  title: Text('Heart Rate: ${latestData['heartRate_bpm']} bpm'),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Oxygen Saturation: ${latestData['oxygenSat_per']}%'),
+                      Text('Body Temperature: ${latestData['bodyTemp_c']}°C'),
+                      Text('Assigned Professional: ${latestData['assigned_professional']}'),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          }
+        },
+      ),
+    );
+  }
+}
